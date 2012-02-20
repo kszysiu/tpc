@@ -261,6 +261,8 @@ bool PerformanceCounter::enable() {
 
 	}
 
+	this->enabled=true;
+
 	free(pCounterMSRObject);
 	return true;
 
@@ -293,6 +295,8 @@ bool PerformanceCounter::disable() {
 		return false;
 
 	}
+
+	this->enabled=false;
 
 	free(pCounterMSRObject);
 	return true;
@@ -345,7 +349,7 @@ unsigned char PerformanceCounter::getCounterMask() const {
 	return counterMask;
 }
 
-uint64_t PerformanceCounter::getCpuMask() const {
+PROCESSORMASK PerformanceCounter::getCpuMask() const {
 	return cpuMask;
 }
 
@@ -381,7 +385,7 @@ void PerformanceCounter::setCounterMask(unsigned char counterMask) {
 	this->counterMask = counterMask;
 }
 
-void PerformanceCounter::setCpuMask(uint64_t cpuMask) {
+void PerformanceCounter::setCpuMask(PROCESSORMASK cpuMask) {
 	this->cpuMask = cpuMask;
 }
 

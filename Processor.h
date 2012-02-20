@@ -22,13 +22,24 @@
 #endif
 
 #include <math.h>
+#include <stdio.h>
 
 //MSRs defines
+//Base (pstate 0) MSR register for Family 10h processors:
+#define BASE_K10_PSTATEMSR 0xC0010064
+
 //Base (pstate 0) MSR register for Family 11h processors:
 #define BASE_ZM_PSTATEMSR 0xC0010064
 
-//Base (pstate 0) MSR register for Family 10h processors:
-#define BASE_K10_PSTATEMSR 0xC0010064
+//Base (pstate 0) MSR register for Family 12h processors:
+#define BASE_12H_PSTATEMSR 0xC0010064
+
+//Base (pstate 0) MSR register for Family 14h processors:
+#define BASE_14H_PSTATEMSR 0xC0010064
+
+//Base (pstate 0) MSR register for Family 15h processors:
+#define BASE_15H_PSTATEMSR 0xC0010064
+
 
 //Shared (both Family 10h and Family 11h use the same registers)
 //regarding PSTATE Control, COFVID Status and CMPHALT registers.
@@ -38,9 +49,14 @@
 
 //Shared (both Family 10h and Family 11h use the same registers)
 //regarding Performance Registers and Time stamp counter
-#define BASE_PESR_REG 0xc0010000	
+#define BASE_PESR_REG 0xc0010000
 #define BASE_PERC_REG 0xc0010004
 #define TIME_STAMP_COUNTER_REG 0x00000010
+
+//Family 15h Performance Registers
+#define BASE_PESR_REG_15 0xc0010200
+#define BASE_PERC_REG_15 0xc0010201
+#define APML_TDP_LIMIT_REG_15 0xc0010075
 
 //Performance Event constants (used for IDLE counting for CPU Usage
 //counter)
@@ -50,6 +66,7 @@
 //PCI Registers defines for northbridge
 #define PCI_FUNC_LINK_CONTROL 0x4
 #define PCI_FUNC_MISC_CONTROL_3 0x3
+#define PCI_FUNC_MISC_CONTROL_5 0x5
 #define PCI_FUNC_DRAM_CONTROLLER 0x2
 #define PCI_FUNC_ADDRESS_MAP 0x1
 #define PCI_FUNC_HT_CONFIG 0x0
@@ -64,6 +81,12 @@
 #define SEMPRON_SI_FAMILY 5
 
 #define PROCESSOR_10H_FAMILY 6
+
+#define PROCESSOR_12H_FAMILY 8
+
+#define PROCESSOR_14H_FAMILY 7
+
+#define PROCESSOR_15H_FAMILY 9
 
 //Scaler helper structures:
 	struct procStatus {
@@ -82,25 +105,39 @@ public:
 class Processor {
 protected:
 
+	//Nested class that defines the behaviour of K10-style performance counters
+
+	friend class K10PerfomanceCounters;
+	class K10PerformanceCounters {
+
+		public:
+			static void perfMonitorCPUUsage (class Processor *p);
+			static void perfMonitorFPUUsage (class Processor *p);
+			static void perfMonitorDCMA (class Processor *p); //Data Cache Misaligned Accesses
+			static void perfCounterGetInfo (class Processor *p);
+	};
+
+
 	/*
 	 *	Attributes
 	 */
 
 	DWORD powerStates;DWORD processorCores;
-	char processorStrId[32];DWORD processorIdentifier;DWORD processorNodes; // count of physical processor nodes (eg: 8 on a quad 6100 opteron box).
+	char processorStrId[64];DWORD processorIdentifier;DWORD processorNodes; // count of physical processor nodes (eg: 8 on a quad 6100 opteron box).
 
 	//Processor Specs
 	int familyBase;
 	int model;
 
 	int stepping;
-	int familyExtended;
 	int modelExtended;
 	int brandId;
 	int processorModel;
 	int string1;
 	int string2;
 	int pkgType;
+	int numBoostStates;
+	int TDP;
 
 	DWORD selectedCore;
 	DWORD selectedNode;
@@ -111,12 +148,10 @@ protected:
 
 	void setProcessorStrId(const char *);
 	void setPowerStates(DWORD);
-	//void setProcessorCores (DWORD); //Gone public to allow processor cores forcing from main program
+	void setProcessorCores (DWORD);
 	void setProcessorIdentifier(DWORD);
 	void setProcessorNodes(DWORD);
 
-	PROCESSORMASK getMask (DWORD, DWORD);
-	PROCESSORMASK getMask ();
 	DWORD getNodeMask (DWORD);
 	DWORD getNodeMask ();
 	bool isValidNode (DWORD);
@@ -133,15 +168,22 @@ protected:
 	void setSpecString1(int);
 	void setSpecString2(int);
 	void setSpecPkgType(int);
+	void setBoostStates(int);
+	void setTDP(int);
 
 	virtual void setPCtoIdleCounter(int, int) {
 		return;
 	}
 
 public:
+	int familyExtended;
 
 	const static DWORD ALL_NODES=-1;
 	const static DWORD ALL_CORES=-1;
+
+	PROCESSORMASK getMask (DWORD, DWORD);
+	PROCESSORMASK getMask ();
+
 
 	//Sets the current node to operate on
 	void setNode (DWORD);
@@ -173,9 +215,6 @@ public:
 	//Public method to show some detailed information about Hardware Thermal Control
 	virtual void showHTC (void);
 
-	//Public method to override number of cores by main
-	void setProcessorCores(DWORD);
-
 	//Get methods to obtain general processor specifications
 	int getSpecFamilyBase();
 	int getSpecModel();
@@ -187,6 +226,7 @@ public:
 	int getSpecString1();
 	int getSpecString2();
 	int getSpecPkgType();
+	int getBoostStates();
 
 	virtual float convertVIDtoVcore(DWORD);
 	virtual DWORD convertVcoretoVID(float);
@@ -213,12 +253,12 @@ public:
 
 	//Low level functions to set specific processor primitives
 	virtual void setVID (PState , DWORD);
-	virtual void setFID (PState , DWORD);
-	virtual void setDID (PState , DWORD);
+	virtual void setFID (PState , float);
+	virtual void setDID (PState , float);
 
 	virtual DWORD getVID(PState);
-	virtual DWORD getFID(PState);
-	virtual DWORD getDID(PState);
+	virtual float getFID(PState);
+	virtual float getDID(PState);
 
 	//Higher level functions that do conversions into lower level primitives
 	virtual void setFrequency(PState, DWORD);
@@ -264,6 +304,10 @@ public:
 	virtual DWORD startupPState();
 	virtual DWORD maxCPUFrequency(); // 0 means that there
 		//is no maximum CPU frequency, i.e. unlocked multiplier
+	virtual void setBoost(bool);
+	virtual DWORD getBoost(void);
+	virtual void setNumBoostStates(DWORD);
+	virtual DWORD getTDP(void);
 
 	//Temperature registers
 	virtual DWORD getTctlRegister(void);
@@ -323,16 +367,12 @@ public:
 
 	//performance counters section
 
-
 	virtual void perfCounterGetInfo();
 	virtual void perfCounterGetValue(unsigned int);
 	virtual void perfMonitorCPUUsage();
-	/*virtual void perfCounterMonitor(int, int);
-	*/
+	virtual void perfMonitorFPUUsage();
+	virtual void perfMonitorDCMA(); //Data Cache Misaligned Accesses
 
-	//Misc
-	virtual void forcePVIMode(bool);
-	virtual void forceSVIMode(bool);
 
 	//Scaler helper methods
     virtual void getCurrentStatus (struct procStatus *, DWORD);

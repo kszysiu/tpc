@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include "Signal.h"
 
 #ifdef _WIN32
 	#include <windows.h>
@@ -99,9 +100,7 @@ Griffin::Griffin () {
 		setProcessorStrId ("Sempron SI Processor");
 	}
 
-
 }
-
 
 /*
  * Static methods to allow external Main to detect current configuration status
@@ -390,11 +389,15 @@ void Griffin::setVID (PState ps, DWORD vid) {
 
 //-----------------------setFID-----------------------------
 //Overloads abstract Processor method to allow per-core personalization
-void Griffin::setFID (PState ps, DWORD fid) {
+void Griffin::setFID (PState ps, float floatFid) {
+
+	unsigned int fid;
 
 	MSRObject *msrObject;
 
-	if ((fid<0) || (fid>31)) {
+	fid=(unsigned int) floatFid;
+
+	if (fid>31) {
 		printf ("Griffin.cpp::setFID - FID Allowed range 0-31\n");
 		return;
 	}
@@ -424,11 +427,14 @@ void Griffin::setFID (PState ps, DWORD fid) {
 
 //-----------------------setDID-----------------------------
 //Overloads abstract Processor method to allow per-core personalization
-void Griffin::setDID(PState ps, DWORD did) {
+void Griffin::setDID(PState ps, float floatDid) {
 
+	unsigned int did;
 	MSRObject *msrObject;
 
-	if ((did < 0) || (did > 4)) {
+	did=(unsigned int)floatDid;
+
+	if (did >= 4) {
 		printf("Griffin.cpp::setDID - DID Allowed range 0-3\n");
 		return;
 	}
@@ -483,7 +489,7 @@ DWORD Griffin::getVID (PState ps) {
 
 //-----------------------getFID-----------------------------
 
-DWORD Griffin::getFID (PState ps) {
+float Griffin::getFID (PState ps) {
 
 	MSRObject *msrObject;
 	DWORD fid;
@@ -508,7 +514,7 @@ DWORD Griffin::getFID (PState ps) {
 
 //-----------------------getDID-----------------------------
 
-DWORD Griffin::getDID (PState ps) {
+float Griffin::getDID (PState ps) {
 
 	MSRObject *msrObject;
 	DWORD did;
@@ -527,7 +533,7 @@ DWORD Griffin::getDID (PState ps) {
 
 	free (msrObject);
 
-	return did;
+	return (float)did;
 }
 
 //-----------------------setFrequency-----------------------------
@@ -755,7 +761,7 @@ PState Griffin::getMaximumPState () {
 	if (!pciRegObject->readPCIReg(PCI_DEV_NORTHBRIDGE, PCI_FUNC_MISC_CONTROL_3, 0xdc, getNodeMask())) {
 		printf ("Griffin.cpp::getMaximumPState - unable to read PCI register\n");
 		free (pciRegObject);
-		return NULL;
+		return 0;
 	}
 
 	/*
@@ -815,7 +821,7 @@ DWORD Griffin::getNBVid(void) {
 			0xdc, getNodeMask())) {
 		printf("Griffin.cpp::getNBVid - unable to read PCI register\n");
 		free(pciRegObject);
-		return NULL;
+		return 0;
 	}
 
 	/*
@@ -902,7 +908,7 @@ DWORD Griffin::c1eDID() {
 			0x1ec, getNodeMask())) {
 		printf("Griffin.cpp::c1eDID - unable to read PCI register\n");
 		free(pciRegObject);
-		return NULL;
+		return 0;
 	}
 
 	/*
@@ -1027,7 +1033,7 @@ DWORD Griffin::getTctlRegister (void) {
 			0xa4, getNodeMask())) {
 		printf("Griffin.cpp::getTctlRegister - unable to read PCI register\n");
 		free(pciRegObject);
-		return NULL;
+		return 0;
 	}
 
 	/*
@@ -1055,7 +1061,7 @@ DWORD Griffin::getTctlMaxDiff (void) {
 			0xa4, getNodeMask())) {
 		printf("Griffin.cpp::getTclMaxDiff - unable to read PCI register\n");
 		free(pciRegObject);
-		return NULL;
+		return 0;
 	}
 
 	/*
@@ -1084,7 +1090,7 @@ DWORD Griffin::getSlamTime (void) {
 			0xd8, getNodeMask())) {
 		printf("Griffin.cpp::getSlamTime - unable to read PCI register\n");
 		free(pciRegObject);
-		return NULL;
+		return 0;
 	}
 
 	/*
@@ -1152,7 +1158,7 @@ DWORD Griffin::getAltVidSlamTime (void) {
 			0xd8, getNodeMask())) {
 		printf("Griffin.cpp::getAltVidSlamTime - unable to read PCI register\n");
 		free(pciRegObject);
-		return NULL;
+		return 0;
 	}
 
 	/*
@@ -2313,62 +2319,9 @@ void Griffin::getCurrentStatus (struct procStatus *pStatus) {
  */
 void Griffin::perfCounterGetInfo () {
 
-	PerformanceCounter *performanceCounter;
-	DWORD node, core, slot;
-
-	printf ("Caption:\n");
-	printf ("Evt:\tperformance counter event\n");
-	printf ("En:\tperformance counter is enabled\n");
-	printf ("U:\tperformance counter will count usermode instructions\n");
-	printf ("OS:\tperformance counter will counter Os/kernel instructions\n");
-	printf ("cMsk:\tperformance counter mask (see processor manual reference)\n");
-	printf ("ED:\tcounting on edge detect, else counting on level detect\n");
-	printf ("APIC:\tif set, an APIC interrupt will be issued on counter overflow\n");
-	printf ("icMsk:\tif set, mask is inversed (see processor manual reference)\n");
-	printf ("uMsk:\tunit mask (see processor manual reference)\n\n");
-
-	for (node=0;node<this->getProcessorNodes();node++) {
-
-		printf ("--- Node %d\n", node);
-
-		setNode(node);
-		setCore(ALL_CORES);
-
-		for (slot=0;slot<4;slot++) {
-
-			performanceCounter=new PerformanceCounter(getMask(), slot);
-
-			for (core=0;core<this->getProcessorCores();core++) {
-
-				if (!performanceCounter->fetch (core)) {
-					printf ("K10PerformanceCounters::perfCounterGetInfo - unable to read performance counter register\n");
-					free (performanceCounter);
-					return;
-				}
-
-				printf ("Slot %d core %d - evt:0x%x En:%d U:%d OS:%d cMsk:%x ED:%d APIC:%d icMsk:%x uMsk:%x\n",
-						slot,
-						core,
-						performanceCounter->getEventSelect(),
-						performanceCounter->getEnabled(),
-						performanceCounter->getCountUserMode(),
-						performanceCounter->getCountOsMode(),
-						performanceCounter->getCounterMask(),
-						performanceCounter->getEdgeDetect(),
-						performanceCounter->getEnableAPICInterrupt(),
-						performanceCounter->getInvertCntMask(),
-						performanceCounter->getUnitMask()
-						);
-			}
-
-			free (performanceCounter);
-
-		}
-
-	}
+	Griffin::K10PerformanceCounters::perfCounterGetInfo(this);
 
 }
-
 /*
  * perfCounterGetValue will retrieve and show the performance counter value for all the selected nodes/processors
  *
@@ -2391,183 +2344,19 @@ void Griffin::perfCounterGetValue (unsigned int perfCounter) {
 
 void Griffin::perfMonitorCPUUsage () {
 
-	PerformanceCounter *perfCounter;
-	MSRObject *tscCounter; //We need the timestamp counter too to determine the cpu usage in percentage
+	Griffin::K10PerformanceCounters::perfMonitorCPUUsage(this);
 
-	DWORD cpuIndex, nodeId, coreId;
-	PROCESSORMASK cpuMask;
-	unsigned int perfCounterSlot;
+}
 
-	uint64_t usage;
+void Griffin::perfMonitorFPUUsage () {
 
-	// These two pointers will refer to two arrays containing previous performance counter values
-	// and previous Time Stamp counters. We need these to obtain instantaneous CPU usage information
-	uint64_t *prevPerfCounters;
-	uint64_t *prevTSCCounters;
+	Griffin::K10PerformanceCounters::perfMonitorFPUUsage(this);
 
-	setNode (ALL_NODES);
-	setCore (ALL_CORES);
+}
 
-	cpuMask=getMask (); /* We do this to do some "caching" of the mask, instead of calculating each time
-							we need to retrieve the time stamp counter */
+void Griffin::perfMonitorDCMA () {
 
-	// Allocating space for previous values of counters.
-	prevPerfCounters=(uint64_t *)calloc (processorCores*processorNodes, sizeof (uint64_t));
-	prevTSCCounters=(uint64_t *)calloc (processorCores*processorNodes, sizeof (uint64_t));
-
-	// MSR Object to retrieve the time stamp counter for all the nodes and all the processors
-	tscCounter=new MSRObject();
-
-	//Creates a new performance counter, for now we set slot 0, but we will
-	//use the findAvailable slot method to find an available method to be used
-	perfCounter=new PerformanceCounter(cpuMask, 0);
-
-	//Event 0x76 is Idle Counter
-	perfCounter->setEventSelect(0x76);
-	perfCounter->setCountOsMode(true);
-	perfCounter->setCountUserMode(true);
-	perfCounter->setCounterMask(0);
-	perfCounter->setEdgeDetect(false);
-	perfCounter->setEnableAPICInterrupt(false);
-	perfCounter->setInvertCntMask(false);
-	perfCounter->setUnitMask(0);
-
-	//Finds an available slot for our purpose
-	perfCounterSlot=perfCounter->findAvailableSlot();
-
-	//findAvailableSlot() returns -2 in case of error
-	if (perfCounterSlot==0xfffffffe) {
-		printf ("Griffin.cpp::perfMonitorCPUUsage - unable to access performance counter slots\n");
-		free (perfCounter);
-		free (tscCounter);
-		free (prevPerfCounters);
-		free (prevTSCCounters);
-		return;
-	}
-
-	//findAvailableSlot() returns -1 in case there aren't available slots
-	if (perfCounterSlot == 0xffffffff) {
-		printf(
-				"Griffin.cpp::perfMonitorCPUUsage - unable to find an available performance counter slot\n");
-		free(perfCounter);
-		free(tscCounter);
-		free(prevPerfCounters);
-		free(prevTSCCounters);
-		return;
-	}
-
-	printf ("Performance counter will use slot #%d\n", perfCounterSlot);
-
-	//In case there are no errors, we program the object with the slot itself has found
-	perfCounter->setSlot(perfCounterSlot);
-
-	// Program the counter slot
-	if (!perfCounter->program()) {
-		printf ("K10PerformanceCounters::perfMonitorCPUUsage - unable to program performance counter parameters\n");
-		free (perfCounter);
-		free (tscCounter);
-		free (prevPerfCounters);
-		free (prevTSCCounters);
-		return;
-	}
-
-	// Enabled the counter slot
-	if (!perfCounter->enable()) {
-		printf ("K10PerformanceCounters::perfMonitorCPUUsage - unable to enable performance counters\n");
-		free (perfCounter);
-		free (tscCounter);
-		free (prevPerfCounters);
-		free (prevTSCCounters);
-		return;
-	}
-
-	/* Here we take a snapshot of the performance counter and a snapshot of the time
-	 * stamp counter to initialize the arrays to let them not show erratic huge numbers
-	 * on first step
-	 */
-
-	if (!perfCounter->takeSnapshot()) {
-		printf ("K10PerformanceCounters::perfMonitorCPUUsage - unable to retrieve performance counter data\n");
-		free (perfCounter);
-		free (tscCounter);
-		free (prevPerfCounters);
-		free (prevTSCCounters);
-		return;
-	}
-
-	if (!tscCounter->readMSR(TIME_STAMP_COUNTER_REG, cpuMask)) {
-		printf(
-				"K10PerformanceCounters::perfMonitorCPUUsage - unable to retrieve time stamp counter\n");
-		free(perfCounter);
-		free(tscCounter);
-		free(prevPerfCounters);
-		free(prevTSCCounters);
-		return;
-	}
-
-	cpuIndex=0;
-	for (nodeId=0;nodeId<processorNodes;nodeId++) {
-		for (coreId=0x0;coreId<processorCores;coreId++) {
-			prevPerfCounters[cpuIndex]=perfCounter->getCounter(cpuIndex);
-			prevTSCCounters[cpuIndex]=tscCounter->getBits(cpuIndex,0,64);
-			cpuIndex++;
-		}
-	}
-
-
-	while (1) {
-
-		if (!perfCounter->takeSnapshot()) {
-			printf ("K10PerformanceCounters::perfMonitorCPUUsage - unable to retrieve performance counter data\n");
-			free (perfCounter);
-			free (tscCounter);
-			free (prevPerfCounters);
-			free (prevTSCCounters);
-			return;
-		}
-
-		if (!tscCounter->readMSR(TIME_STAMP_COUNTER_REG, cpuMask)) {
-			printf ("K10PerformanceCounters::perfMonitorCPUUsage - unable to retrieve time stamp counter\n");
-			free (perfCounter);
-			free (tscCounter);
-			free (prevPerfCounters);
-			free (prevTSCCounters);
-			return;
-		}
-
-		cpuIndex=0;
-
-		for (nodeId=0;nodeId<processorNodes;nodeId++) {
-
-			printf ("Node %d -", nodeId);
-
-			for (coreId=0x0;coreId<processorCores;coreId++) {
-
-				usage=((perfCounter->getCounter(cpuIndex))-prevPerfCounters[cpuIndex])*100;
-				usage/=tscCounter->getBits(cpuIndex,0,64)-prevTSCCounters[cpuIndex];
-
-				printf (" c%d:%d%%",coreId, (unsigned int)usage);
-
-				prevPerfCounters[cpuIndex]=perfCounter->getCounter(cpuIndex);
-				prevTSCCounters[cpuIndex]=tscCounter->getBits(cpuIndex,0,64);
-
-				cpuIndex++;
-
-			}
-
-			printf ("\n");
-
-		}
-
-		Sleep (1000);
-
-	}
-
-	//Never executed, since the always true loop before...
-	free (perfCounter);
-	free (tscCounter);
-	free (prevPerfCounters);
-	free (prevTSCCounters);
+	Griffin::K10PerformanceCounters::perfMonitorDCMA(this);
 
 }
 
@@ -2649,6 +2438,66 @@ void Griffin::checkMode () {
 }
 
 /***************** PRIVATE METHODS *******************/
+
+/*
+ * dram bank is valid
+ */
+bool Griffin::getDramValid (DWORD device) {
+
+	PCIRegObject *dramConfigurationHighRegister = new PCIRegObject();
+
+	bool reg1;
+
+	dramConfigurationHighRegister=new PCIRegObject ();
+
+	if (device==0) {
+		reg1=dramConfigurationHighRegister->readPCIReg(PCI_DEV_NORTHBRIDGE,
+			PCI_FUNC_DRAM_CONTROLLER, 0x94, getNodeMask());
+	} else {
+		reg1=dramConfigurationHighRegister->readPCIReg(PCI_DEV_NORTHBRIDGE,
+			PCI_FUNC_DRAM_CONTROLLER, 0x194, getNodeMask());
+	}
+
+	if (!reg1) {
+		printf("Griffin::getDramValid - unable to read PCI registers\n");
+		free(dramConfigurationHighRegister);
+		return false;
+	}
+
+	return dramConfigurationHighRegister->getBits(0,3,1);
+
+}
+
+int Griffin::getDramFrequency (DWORD device) {
+
+	PCIRegObject *dramConfigurationHighRegister = new PCIRegObject();
+
+	bool reg1;
+
+	DWORD regValue;
+
+	dramConfigurationHighRegister=new PCIRegObject ();
+
+	if (device==0) {
+		reg1=dramConfigurationHighRegister->readPCIReg(PCI_DEV_NORTHBRIDGE,
+			PCI_FUNC_DRAM_CONTROLLER, 0x94, getNodeMask());
+	} else {
+		reg1=dramConfigurationHighRegister->readPCIReg(PCI_DEV_NORTHBRIDGE,
+			PCI_FUNC_DRAM_CONTROLLER, 0x194, getNodeMask());
+	}
+
+	if (!reg1) {
+		printf("Griffin::getDRAMFrequency - unable to read PCI registers\n");
+		free(dramConfigurationHighRegister);
+		return 0;
+	}
+
+	regValue=dramConfigurationHighRegister->getBits(0,0,3);
+
+	return 200+regValue*(float)66.7;
+
+}
+
 
 void Griffin::getDramTimingHigh(DWORD device, DWORD *TrwtWB,
 		DWORD *TrwtTO, DWORD *Twtr, DWORD *Twrrd, DWORD *Twrwr, DWORD *Trdrd,
@@ -2935,6 +2784,7 @@ void Griffin::showDramTimings() {
 	DWORD Tcl, Trcd, Trp, Trtp, Tras, Trc, Twr, Trrd, T_mode;
 	DWORD Tfaw, TrwtWB, TrwtTO, Twtr, Twrrd, Twrwr, Trdrd, Tref, Trfc0;
 	DWORD Trfc1;
+	DWORD ddrFrequency;
 
 	printf ("\nDRAM Configuration Status\n\n");
 
@@ -2946,23 +2796,32 @@ void Griffin::showDramTimings() {
 
 		for (dct_index = 0; dct_index < 2; dct_index++) {
 
-			getDramTimingLow(dct_index, &Tcl, &Trcd, &Trp, &Trtp, &Tras, &Trc,
-					&Twr, &Trrd, &T_mode, &Tfaw);
+			if (getDramValid(dct_index)) {
 
-			getDramTimingHigh(dct_index, &TrwtWB, &TrwtTO, &Twtr, &Twrrd,
-					&Twrwr, &Trdrd, &Tref, &Trfc0, &Trfc1);
+				ddrFrequency=getDramFrequency(dct_index)*2;
 
-			printf("DCT%d:\n", dct_index);
-			//Low DRAM Register
-			printf(
-					"Tcl=%u Trcd=%u Trp=%u Tras=%u Access Mode:%uT Trtp=%u Trc=%u Twr=%u Trrd=%u Tfaw=%u\n",
-					Tcl, Trcd, Trp, Tras, T_mode, Trtp, Trc, Twr, Trrd, Tfaw);
+				getDramTimingLow(dct_index, &Tcl, &Trcd, &Trp, &Trtp, &Tras, &Trc,
+						&Twr, &Trrd, &T_mode, &Tfaw);
 
-			//High DRAM Register
-			printf(
-					"TrwtWB=%u TrwtTO=%u Twtr=%u Twrrd=%u Twrwr=%u Trdrd=%u Tref=%u Trfc0=%u Trfc1=%u\n",
-					TrwtWB, TrwtTO, Twtr, Twrrd, Twrwr, Trdrd, Tref, Trfc0,
-					Trfc1);
+				getDramTimingHigh(dct_index, &TrwtWB, &TrwtTO, &Twtr, &Twrrd,
+						&Twrwr, &Trdrd, &Tref, &Trfc0, &Trfc1);
+
+				printf("DCT%d: ", dct_index);
+				printf ("memory type: DDR2");
+				printf (" frequency: %d MHz\n",ddrFrequency);
+
+				//Low DRAM Register
+				printf(
+						"Tcl=%u Trcd=%u Trp=%u Tras=%u Access Mode:%uT Trtp=%u Trc=%u Twr=%u Trrd=%u Tfaw=%u\n",
+						Tcl, Trcd, Trp, Tras, T_mode, Trtp, Trc, Twr, Trrd, Tfaw);
+
+				//High DRAM Register
+				printf(
+						"TrwtWB=%u TrwtTO=%u Twtr=%u Twrrd=%u Twrwr=%u Trdrd=%u Tref=%u Trfc0=%u Trfc1=%u\n",
+						TrwtWB, TrwtTO, Twtr, Twrrd, Twrwr, Trdrd, Tref, Trfc0,
+						Trfc1);
+
+			}
 
 		}
 

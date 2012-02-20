@@ -1,9 +1,9 @@
 
 PREFIX=/usr
 
-ARCH=$(shell uname -p)
+ARCH=$(shell uname -m)
 
-PROJECT=TurionPowerControl.$(ARCH)
+PROJECT=TurionPowerControl
 PROJ_CXXFLAGS=-O2 $(CXXFLAGS)
 PROJ_LDFLAGS=$(LDFLAGS)
 
@@ -15,12 +15,16 @@ SOURCES=TurionPowerControl.cpp \
 	cpuPrimitives.cpp \
 	Griffin.cpp \
 	K10Processor.cpp \
+	Brazos.cpp \
+	Llano.cpp \
 	MSRObject.cpp \
 	MSVC_Round.cpp \
 	PCIRegObject.cpp \
 	PerformanceCounter.cpp \
 	Processor.cpp \
-	scaler.cpp
+	K10PerformanceCounters.cpp \
+	scaler.cpp \
+	Signal.cpp
 
 OBJECTS=$(SOURCES:%.cpp=$(OBJDIR)/%.o)
 DEPS=$(SOURCES:%.cpp=$(OBJDIR)/.%.d)
@@ -52,7 +56,6 @@ distclean: clean
 	$(RM) -r $(OBJROOT)
 	$(RM) core core.[0-9]
 	$(RM) *~ DEADJOE *.orig *.rej *.i *.r[0-9]* *.mine
-	$(RM) TurionPowerControl.x86_64 TurionPowerControl.i386
 
 .PHONY: clean distclean all install uninstall i386
 

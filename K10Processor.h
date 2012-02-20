@@ -10,6 +10,10 @@ private:
 
 	void printRoute(DWORD);
 
+	int getDramFrequency (DWORD device);
+	bool getDDR3Mode (DWORD device);
+	bool getDramValid (DWORD device);
+
 
 	//DRAM timing register Low
 	void getDramTimingLow(
@@ -22,12 +26,6 @@ private:
 			DWORD *TrwtTO, DWORD *Twtr, DWORD *Twrrd, DWORD *Twrwr,
 			DWORD *Trdrd, DWORD *Tref, DWORD *Trfc0, DWORD *Trfc1,
 			DWORD *Trfc2, DWORD *Trfc3, DWORD *MaxRdLatency);
-
-protected:
-
-	bool forcePVI;
-	bool forceSVI;
-
 
 public:
 
@@ -46,12 +44,12 @@ public:
 	void convertFreqtoFD(DWORD, int *, int *);
 		
 	void setVID (PState , DWORD);
-	void setFID (PState , DWORD);
-	void setDID (PState , DWORD);
+	void setFID (PState , float);
+	void setDID (PState , float);
 
 	DWORD getVID (PState);
-	DWORD getFID (PState);
-	DWORD getDID (PState);
+	float getFID (PState);
+	float getDID (PState);
 
 	void setFrequency (PState , DWORD);
 	void setVCore (PState, float);
@@ -150,13 +148,11 @@ public:
 	void perfCounterGetInfo ();
 	void perfCounterGetValue (unsigned int);
 	void perfMonitorCPUUsage ();
+	void perfMonitorFPUUsage ();
+	void perfMonitorDCMA ();
 
 	//Scaler helper methods
 	void getCurrentStatus (struct procStatus *pStatus, DWORD core);
-
-	//Miscellaneous
-	void forceSVIMode (bool);
-	void forcePVIMode (bool);
 
 };
 

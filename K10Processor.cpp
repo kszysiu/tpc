@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include "Signal.h"
 
 #ifdef _WIN32
 	#include <windows.h>
@@ -132,9 +133,6 @@ K10Processor::K10Processor () {
 	setPowerStates(5);
 	setProcessorIdentifier(PROCESSOR_10H_FAMILY);
 	setProcessorStrId("Family 10h Processor");
-
-	forcePVI = false;
-	forceSVI = false;
 
 }
 
@@ -402,10 +400,15 @@ void K10Processor::setVID (PState ps, DWORD vid) {
 
 //-----------------------setFID-----------------------------
 //Overloads abstract Processor method to allow per-core personalization
-void K10Processor::setFID(PState ps, DWORD fid) {
+void K10Processor::setFID(PState ps, float floatFid) {
+
+	unsigned int fid;
+
 	MSRObject *msrObject;
 
-	if ((fid < 0) || (fid > 31)) {
+	fid=(unsigned int)floatFid;
+
+	if (fid > 31) {
 		printf("K10Processor.cpp: FID Allowed range 0-31\n");
 		return;
 	}
@@ -435,10 +438,14 @@ void K10Processor::setFID(PState ps, DWORD fid) {
 
 //-----------------------setDID-----------------------------
 //Overloads abstract Processor method to allow per-core personalization
-void K10Processor::setDID(PState ps, DWORD did) {
+void K10Processor::setDID(PState ps, float floatDid) {
+
+	unsigned int did;
 	MSRObject *msrObject;
 
-	if ((did < 0) || (did > 4)) {
+	did=(unsigned int)floatDid;
+
+	if (did >= 4) {
 		printf("K10Processor.cpp: DID Allowed range 0-3\n");
 		return;
 	}
@@ -493,7 +500,7 @@ DWORD K10Processor::getVID (PState ps) {
 
 //-----------------------getFID-----------------------------
 
-DWORD K10Processor::getFID (PState ps) {
+float K10Processor::getFID (PState ps) {
 
 	MSRObject *msrObject;
 	DWORD fid;
@@ -518,7 +525,7 @@ DWORD K10Processor::getFID (PState ps) {
 
 //-----------------------getDID-----------------------------
 
-DWORD K10Processor::getDID (PState ps) {
+float K10Processor::getDID (PState ps) {
 
 	MSRObject *msrObject;
 	DWORD did;
@@ -537,7 +544,7 @@ DWORD K10Processor::getDID (PState ps) {
 
 	free (msrObject);
 
-	return did;
+	return (float)did;
 }
 
 //-----------------------setFrequency-----------------------------
@@ -618,10 +625,6 @@ bool K10Processor::getPVIMode () {
 	bool pviMode;
 
 	pciRegObject=new PCIRegObject();
-
-	if (forcePVI==true) return true;
-
-	if (forceSVI==true) return false;
 
 	if (!pciRegObject->readPCIReg(PCI_DEV_NORTHBRIDGE, PCI_FUNC_MISC_CONTROL_3, 0xa0, getNodeMask())) {
 		printf ("K10Processor.cpp::getPVIMode - Unable to read PCI register\n");
@@ -760,7 +763,7 @@ PState K10Processor::getMaximumPState () {
 	if (!pciRegObject->readPCIReg(PCI_DEV_NORTHBRIDGE, PCI_FUNC_MISC_CONTROL_3, 0xdc, getNodeMask())) {
 		printf ("K10Processor.cpp::getMaximumPState - unable to read PCI register\n");
 		free (pciRegObject);
-		return NULL;
+		return 0;
 	}
 
 	/*
@@ -1366,7 +1369,7 @@ DWORD K10Processor::getTctlRegister (void) {
 				0xa4, getNodeMask())) {
 			printf("K10Processor.cpp::getTctlRegister - unable to read PCI register\n");
 			free(pciRegObject);
-			return NULL;
+			return 0;
 		}
 
 		/*
@@ -1394,7 +1397,7 @@ DWORD K10Processor::getTctlMaxDiff() {
 			0xa4, getNodeMask())) {
 		printf("K10Processor.cpp::getTctlMaxDiff unable to read PCI register\n");
 		free(pciRegObject);
-		return NULL;
+		return 0;
 	}
 
 	/*
@@ -1423,7 +1426,7 @@ DWORD K10Processor::getSlamTime (void) {
 			0xd4, getNodeMask())) {
 		printf("K10Processor.cpp::getSlamTime unable to read PCI register\n");
 		free(pciRegObject);
-		return NULL;
+		return 0;
 	}
 
 	/*
@@ -2667,59 +2670,7 @@ void K10Processor::setC1EStatus (bool toggle) {
  */
 void K10Processor::perfCounterGetInfo () {
 
-	PerformanceCounter *performanceCounter;
-	DWORD node, core, slot;
-
-	printf ("Caption:\n");
-	printf ("Evt:\tperformance counter event\n");
-	printf ("En:\tperformance counter is enabled\n");
-	printf ("U:\tperformance counter will count usermode instructions\n");
-	printf ("OS:\tperformance counter will counter Os/kernel instructions\n");
-	printf ("cMsk:\tperformance counter mask (see processor manual reference)\n");
-	printf ("ED:\tcounting on edge detect, else counting on level detect\n");
-	printf ("APIC:\tif set, an APIC interrupt will be issued on counter overflow\n");
-	printf ("icMsk:\tif set, mask is inversed (see processor manual reference)\n");
-	printf ("uMsk:\tunit mask (see processor manual reference)\n\n");
-
-	for (node=0;node<this->getProcessorNodes();node++) {
-
-		printf ("--- Node %d\n", node);
-
-		setNode(node);
-		setCore(ALL_CORES);
-
-		for (slot=0;slot<4;slot++) {
-
-			performanceCounter=new PerformanceCounter(getMask(), slot);
-
-			for (core=0;core<this->getProcessorCores();core++) {
-
-				if (!performanceCounter->fetch (core)) {
-					printf ("K10PerformanceCounters::perfCounterGetInfo - unable to read performance counter register\n");
-					free (performanceCounter);
-					return;
-				}
-
-				printf ("Slot %d core %d - evt:0x%x En:%d U:%d OS:%d cMsk:%x ED:%d APIC:%d icMsk:%x uMsk:%x\n",
-						slot,
-						core,
-						performanceCounter->getEventSelect(),
-						performanceCounter->getEnabled(),
-						performanceCounter->getCountUserMode(),
-						performanceCounter->getCountOsMode(),
-						performanceCounter->getCounterMask(),
-						performanceCounter->getEdgeDetect(),
-						performanceCounter->getEnableAPICInterrupt(),
-						performanceCounter->getInvertCntMask(),
-						performanceCounter->getUnitMask()
-						);
-			}
-
-			free (performanceCounter);
-
-		}
-
-	}
+	K10Processor::K10PerformanceCounters::perfCounterGetInfo(this);
 
 }
 
@@ -2745,185 +2696,22 @@ void K10Processor::perfCounterGetValue (unsigned int perfCounter) {
 
 void K10Processor::perfMonitorCPUUsage () {
 
-	PerformanceCounter *perfCounter;
-	MSRObject *tscCounter; //We need the timestamp counter too to determine the cpu usage in percentage
-
-	DWORD cpuIndex, nodeId, coreId;
-	PROCESSORMASK cpuMask;
-	unsigned int perfCounterSlot;
-
-	uint64_t usage;
-
-	// These two pointers will refer to two arrays containing previous performance counter values
-	// and previous Time Stamp counters. We need these to obtain instantaneous CPU usage information
-	uint64_t *prevPerfCounters;
-	uint64_t *prevTSCCounters;
-
-	setNode (ALL_NODES);
-	setCore (ALL_CORES);
-
-	cpuMask=getMask (); /* We do this to do some "caching" of the mask, instead of calculating each time
-							we need to retrieve the time stamp counter */
-
-	// Allocating space for previous values of counters.
-	prevPerfCounters=(uint64_t *)calloc (processorCores*processorNodes, sizeof (uint64_t));
-	prevTSCCounters=(uint64_t *)calloc (processorCores*processorNodes, sizeof (uint64_t));
-
-	// MSR Object to retrieve the time stamp counter for all the nodes and all the processors
-	tscCounter=new MSRObject();
-
-	//Creates a new performance counter, for now we set slot 0, but we will
-	//use the findAvailable slot method to find an available method to be used
-	perfCounter=new PerformanceCounter(cpuMask, 0);
-
-	//Event 0x76 is Idle Counter
-	perfCounter->setEventSelect(0x76);
-	perfCounter->setCountOsMode(true);
-	perfCounter->setCountUserMode(true);
-	perfCounter->setCounterMask(0);
-	perfCounter->setEdgeDetect(false);
-	perfCounter->setEnableAPICInterrupt(false);
-	perfCounter->setInvertCntMask(false);
-	perfCounter->setUnitMask(0);
-
-	//Finds an available slot for our purpose
-	perfCounterSlot=perfCounter->findAvailableSlot();
-
-	//findAvailableSlot() returns -2 in case of error
-	if (perfCounterSlot==0xfffffffe) {
-		printf ("K10Processor.cpp::perfMonitorCPUUsage - unable to access performance counter slots\n");
-		free (perfCounter);
-		free (tscCounter);
-		free (prevPerfCounters);
-		free (prevTSCCounters);
-		return;
-	}
-
-	//findAvailableSlot() returns -1 in case there aren't available slots
-	if (perfCounterSlot == 0xffffffff) {
-		printf(
-				"K10Processor.cpp::perfMonitorCPUUsage - unable to find an available performance counter slot\n");
-		free(perfCounter);
-		free(tscCounter);
-		free(prevPerfCounters);
-		free(prevTSCCounters);
-		return;
-	}
-
-	printf ("Performance counter will use slot #%d\n", perfCounterSlot);
-
-	//In case there are no errors, we program the object with the slot itself has found
-	perfCounter->setSlot(perfCounterSlot);
-
-	// Program the counter slot
-	if (!perfCounter->program()) {
-		printf ("K10PerformanceCounters::perfMonitorCPUUsage - unable to program performance counter parameters\n");
-		free (perfCounter);
-		free (tscCounter);
-		free (prevPerfCounters);
-		free (prevTSCCounters);
-		return;
-	}
-
-	// Enabled the counter slot
-	if (!perfCounter->enable()) {
-		printf ("K10PerformanceCounters::perfMonitorCPUUsage - unable to enable performance counters\n");
-		free (perfCounter);
-		free (tscCounter);
-		free (prevPerfCounters);
-		free (prevTSCCounters);
-		return;
-	}
-
-	/* Here we take a snapshot of the performance counter and a snapshot of the time
-	 * stamp counter to initialize the arrays to let them not show erratic huge numbers
-	 * on first step
-	 */
-
-	if (!perfCounter->takeSnapshot()) {
-		printf ("K10PerformanceCounters::perfMonitorCPUUsage - unable to retrieve performance counter data\n");
-		free (perfCounter);
-		free (tscCounter);
-		free (prevPerfCounters);
-		free (prevTSCCounters);
-		return;
-	}
-
-	if (!tscCounter->readMSR(TIME_STAMP_COUNTER_REG, cpuMask)) {
-		printf(
-				"K10PerformanceCounters::perfMonitorCPUUsage - unable to retrieve time stamp counter\n");
-		free(perfCounter);
-		free(tscCounter);
-		free(prevPerfCounters);
-		free(prevTSCCounters);
-		return;
-	}
-
-	cpuIndex=0;
-	for (nodeId=0;nodeId<processorNodes;nodeId++) {
-		for (coreId=0x0;coreId<processorCores;coreId++) {
-			prevPerfCounters[cpuIndex]=perfCounter->getCounter(cpuIndex);
-			prevTSCCounters[cpuIndex]=tscCounter->getBits(cpuIndex,0,64);
-			cpuIndex++;
-		}
-	}
-
-
-	while (1) {
-
-		if (!perfCounter->takeSnapshot()) {
-			printf ("K10PerformanceCounters::perfMonitorCPUUsage - unable to retrieve performance counter data\n");
-			free (perfCounter);
-			free (tscCounter);
-			free (prevPerfCounters);
-			free (prevTSCCounters);
-			return;
-		}
-
-		if (!tscCounter->readMSR(TIME_STAMP_COUNTER_REG, cpuMask)) {
-			printf ("K10PerformanceCounters::perfMonitorCPUUsage - unable to retrieve time stamp counter\n");
-			free (perfCounter);
-			free (tscCounter);
-			free (prevPerfCounters);
-			free (prevTSCCounters);
-			return;
-		}
-
-		cpuIndex=0;
-
-		for (nodeId=0;nodeId<processorNodes;nodeId++) {
-
-			printf ("Node %d -", nodeId);
-
-			for (coreId=0x0;coreId<processorCores;coreId++) {
-
-				usage=((perfCounter->getCounter(cpuIndex))-prevPerfCounters[cpuIndex])*100;
-				usage/=tscCounter->getBits(cpuIndex,0,64)-prevTSCCounters[cpuIndex];
-
-				printf (" c%d:%d%%",coreId, (unsigned int)usage);
-
-				prevPerfCounters[cpuIndex]=perfCounter->getCounter(cpuIndex);
-				prevTSCCounters[cpuIndex]=tscCounter->getBits(cpuIndex,0,64);
-
-				cpuIndex++;
-
-			}
-
-			printf ("\n");
-
-		}
-
-		Sleep (1000);
-
-	}
-
-	//Never executed, since the always true loop before...
-	free (perfCounter);
-	free (tscCounter);
-	free (prevPerfCounters);
-	free (prevTSCCounters);
+	K10Processor::K10PerformanceCounters::perfMonitorCPUUsage(this);
 
 }
+
+void K10Processor::perfMonitorFPUUsage () {
+
+	K10Processor::K10PerformanceCounters::perfMonitorFPUUsage(this);
+
+}
+
+void K10Processor::perfMonitorDCMA () {
+
+	K10Processor::K10PerformanceCounters::perfMonitorDCMA(this);
+
+}
+
 
 void K10Processor::getCurrentStatus (struct procStatus *pStatus, DWORD core) {
 
@@ -2939,29 +2727,6 @@ return;
 
 }
 
-
-void K10Processor::forceSVIMode (bool force) {
-
-	printf ("** SVI mode forced\n");
-
-	forceSVI=force;
-
-	if (forcePVI) printf ("** Warning: PVI mode is forced too. May result in undefined behaviour\n");
-
-
-}
-
-void K10Processor::forcePVIMode (bool force) {
-
-	printf ("** PVI mode forced\n");
-
-	forcePVI=force;
-
-	if (forceSVI) printf ("** Warning: SVI mode is forced too. May result in undefined behaviour\n");
-
-}
-
-
 void K10Processor::checkMode () {
 
 	DWORD i,pstate,vid,fid,did;
@@ -2972,7 +2737,7 @@ void K10Processor::checkMode () {
 	DWORD oTimeStamp;
 	float curVcore;
 	DWORD maxPState;
-	int cid;
+	unsigned int cid;
 
 	printf ("Monitoring...\n");
 
@@ -3026,7 +2791,7 @@ void K10Processor::checkMode () {
 			for (cid=0;cid<processorCores;cid++) {
 			printf ("Core%d:",cid);
 				for (i=0;i<5;i++)
-					printf ("\t%d",states[0][i]);
+					printf ("\t%d",states[cid][i]);
 
 			printf ("\n");
 			}
@@ -3046,28 +2811,114 @@ void K10Processor::checkMode () {
 /***************** PRIVATE METHODS ********************/
 
 
+/*
+ * dram bank is valid
+ */
+bool K10Processor::getDramValid (DWORD device) {
+
+	PCIRegObject *dramConfigurationHighRegister = new PCIRegObject();
+
+	bool reg1;
+
+	dramConfigurationHighRegister=new PCIRegObject ();
+
+	if (device==0) {
+		reg1=dramConfigurationHighRegister->readPCIReg(PCI_DEV_NORTHBRIDGE,
+			PCI_FUNC_DRAM_CONTROLLER, 0x94, getNodeMask());
+	} else {
+		reg1=dramConfigurationHighRegister->readPCIReg(PCI_DEV_NORTHBRIDGE,
+			PCI_FUNC_DRAM_CONTROLLER, 0x194, getNodeMask());
+	}
+
+	if (!reg1) {
+		printf("K10Processor::getDramValid - unable to read PCI registers\n");
+		free(dramConfigurationHighRegister);
+		return false;
+	}
+
+	return dramConfigurationHighRegister->getBits(0,3,1);
+
+}
+
+/*
+ * Determines if DCT is in DDR3 mode. True means DDR3, false means DDR2
+ */
+bool K10Processor::getDDR3Mode (DWORD device) {
+
+	PCIRegObject *dramConfigurationHighRegister = new PCIRegObject();
+
+	bool reg1;
+
+	dramConfigurationHighRegister=new PCIRegObject ();
+
+	if (device==0) {
+		reg1=dramConfigurationHighRegister->readPCIReg(PCI_DEV_NORTHBRIDGE,
+			PCI_FUNC_DRAM_CONTROLLER, 0x94, getNodeMask());
+	} else {
+		reg1=dramConfigurationHighRegister->readPCIReg(PCI_DEV_NORTHBRIDGE,
+			PCI_FUNC_DRAM_CONTROLLER, 0x194, getNodeMask());
+	}
+
+	if (!reg1) {
+		printf("K10Processor::getDDR3Mode - unable to read PCI registers\n");
+		free(dramConfigurationHighRegister);
+		return false;
+	}
+
+	return dramConfigurationHighRegister->getBits(0,8,1);
+
+}
+
+int K10Processor::getDramFrequency (DWORD device) {
+
+	PCIRegObject *dramConfigurationHighRegister = new PCIRegObject();
+
+	bool reg1;
+
+	DWORD regValue;
+
+	dramConfigurationHighRegister=new PCIRegObject ();
+
+	if (device==0) {
+		reg1=dramConfigurationHighRegister->readPCIReg(PCI_DEV_NORTHBRIDGE,
+			PCI_FUNC_DRAM_CONTROLLER, 0x94, getNodeMask());
+	} else {
+		reg1=dramConfigurationHighRegister->readPCIReg(PCI_DEV_NORTHBRIDGE,
+			PCI_FUNC_DRAM_CONTROLLER, 0x194, getNodeMask());
+	}
+
+	if (!reg1) {
+		printf("K10Processor::getDRAMFrequency - unable to read PCI registers\n");
+		free(dramConfigurationHighRegister);
+		return false;
+	}
+
+	regValue=dramConfigurationHighRegister->getBits(0,0,3);
+
+	switch (getDDR3Mode(device)) {
+		case true:
+			return (int)(400 + (regValue-3)*(float)133.4);
+		case false:
+			if (regValue==0x4) regValue++; //in case of regvalue==100b (4), increments regvalue by one to match 533 Mhz
+			return (int)(200 + (regValue)*(float)66.7);
+		default:
+			return 0;
+	}
+
+	return 0;
+
+}
+
 void K10Processor::getDramTimingHigh(DWORD device, DWORD *TrwtWB,
 		DWORD *TrwtTO, DWORD *Twtr, DWORD *Twrrd, DWORD *Twrwr, DWORD *Trdrd,
 		DWORD *Tref, DWORD *Trfc0, DWORD *Trfc1, DWORD *Trfc2, DWORD *Trfc3,
 		DWORD *MaxRdLatency) {
-
-	/*DWORD miscReg;
-	 DWORD Target = ((0x18+node) << 3) + 2;
-
-	 DWORD DRAMTimingHighRegister;*/
 
 	PCIRegObject *dramTimingHighRegister = new PCIRegObject();
 	PCIRegObject *dramControlRegister = new PCIRegObject();
 
 	bool reg1;
 	bool reg2;
-
-	/*if( device == 1 )
-	 {
-	 DRAMTimingHighRegister = 0x18c;
-	 } else {
-	 DRAMTimingHighRegister = 0x8c;
-	 }*/
 
 	if (device == 1) {
 		reg1 = dramTimingHighRegister->readPCIReg(PCI_DEV_NORTHBRIDGE,
@@ -3094,30 +2945,47 @@ void K10Processor::getDramTimingHigh(DWORD device, DWORD *TrwtWB,
 	//ReadPciConfigDwordEx (Target,DRAMTimingHighRegister,&miscReg);
 
 	*TrwtWB = dramTimingHighRegister->getBits(0, 0, 4); //(miscReg >> 0) & 0x0f;
-	*TrwtWB += 3;
-
 	*TrwtTO = dramTimingHighRegister->getBits(0, 4, 4); //(miscReg >> 4) & 0x0f;
-	*TrwtTO += 2;
-
-	*Twtr = dramTimingHighRegister->getBits(0, 8, 2); //(miscReg >> 8) & 0x03;
-	*Twtr += 4;
-
+	*Twtr = dramTimingHighRegister->getBits(0, 8, 2); //(miscReg >> 8) & 0x03; TODO: fix this in case of DDR3!
 	*Twrrd = dramTimingHighRegister->getBits(0, 10, 2); //(miscReg >> 10) & 0x03;
-	//	*Twrrd += 0;
-
 	*Twrwr = dramTimingHighRegister->getBits(0, 12, 2); //(miscReg >> 12) & 0x03;
-	*Twrwr += 0;
-
-	//TODO: check for bug in specifications, Trdrd should be +2 not +3
 	*Trdrd = dramTimingHighRegister->getBits(0, 14, 2); //(miscReg >> 14) & 0x03;
-	*Trdrd += 3;
-
 	*Tref = dramTimingHighRegister->getBits(0, 16, 2); //(miscReg >> 16) & 0x03;
-
 	*Trfc0 = dramTimingHighRegister->getBits(0, 20, 3); //(miscReg >> 20) & 0x07;
 	*Trfc1 = dramTimingHighRegister->getBits(0, 23, 3); //(miscReg >> 23) & 0x07;
 	*Trfc2 = dramTimingHighRegister->getBits(0, 26, 3); //(miscReg >> 26) & 0x07;
 	*Trfc3 = dramTimingHighRegister->getBits(0, 29, 3); //(miscReg >> 29) & 0x07;
+
+	if (getDDR3Mode(device) || getDramFrequency(device) == 533) {
+
+		//Adjusting timings for DDR3/DDR2-1066 memories.
+
+		*TrwtWB += 3;
+		*TrwtTO += 2;
+		*Twtr += 4;
+
+		if (!getDDR3Mode(device)) {
+			*Twrrd += 1;
+			*Twrwr += 1;
+			*Trdrd += 2;
+		} else {
+			*Twrrd += (dramControlRegister->getBits(0,8,2)<<2) + 0;
+			*Twrwr += (dramControlRegister->getBits(0,10,2)<<2) + 1;
+			*Trdrd += (dramControlRegister->getBits(0,12,2)<<2) + 2;
+		}
+
+	} else {
+
+		//Adjusting timings for DDR2 memories
+
+		*TrwtWB += 0;
+		*TrwtTO += 2;
+		*Twtr += 0;
+		*Twrrd += 1;
+		*Twrwr += 1;
+		*Trdrd += 2;
+
+	}
 
 	free(dramTimingHighRegister);
 	free(dramControlRegister);
@@ -3132,31 +3000,13 @@ void K10Processor::getDramTimingLow(
 		DWORD *Trc, DWORD *Twr, DWORD *Trrd, DWORD *Tcwl, DWORD *T_mode,
 		DWORD *Tfaw) {
 
-	/*DWORD miscReg;
-	 DWORD Target = ((0x18+node) << 3) + 2;	// F2x[1,0]88 DRAM Timing Low Register*/
-
 	bool reg1;
 	bool reg2;
 	bool reg3;
 
-	/*DWORD DRAMTimingLowRegister;
-	 DWORD DRAMConfigurationHighRegister;
-	 DWORD DRAMMRSRegister;*/
-
 	PCIRegObject *dramTimingLowRegister = new PCIRegObject();
 	PCIRegObject *dramConfigurationHighRegister = new PCIRegObject();
 	PCIRegObject *dramMsrRegister = new PCIRegObject();
-
-	/*if( device == 1 )
-	 {
-	 DRAMMRSRegister = 0x184;
-	 DRAMTimingLowRegister = 0x188;
-	 DRAMConfigurationHighRegister = 0x194;
-	 } else {
-	 DRAMMRSRegister = 0x84;
-	 DRAMTimingLowRegister = 0x88;
-	 DRAMConfigurationHighRegister = 0x94;
-	 }*/
 
 	if (device == 1) {
 
@@ -3198,7 +3048,10 @@ void K10Processor::getDramTimingLow(
 	// 1b= 16 memclk .... 1001b= 32 memclk
 	*Tfaw = dramConfigurationHighRegister->getBits(0, 28, 4) << 1; //((miscReg >> 28) << 1);
 	if (*Tfaw != 0) {
-		*Tfaw += 14;
+		if (getDDR3Mode(device) || getDramFrequency(device) == 533)
+			*Tfaw += 14;
+		else
+			*Tfaw += 7;
 	}
 
 	if (dramConfigurationHighRegister->getBits(0, 14, 1)) {
@@ -3206,37 +3059,74 @@ void K10Processor::getDramTimingLow(
 		return;
 	}
 
-	//ReadPciConfigDwordEx (Target,DRAMTimingLowRegister,&miscReg);
-
 	*Tcl = dramTimingLowRegister->getBits(0, 0, 4); //(miscReg) & 0x0F;
-	*Tcl += 4;
-
 	*Trcd = dramTimingLowRegister->getBits(0, 4, 3); //(miscReg >> 4) & 0x07;
-	*Trcd += 5;
-
 	*Trp = dramTimingLowRegister->getBits(0, 7, 3); //(miscReg >> 7) & 0x07;
-	*Trp += 5;
-
 	*Trtp = dramTimingLowRegister->getBits(0, 10, 2); //(miscReg >> 10) & 0x03;
-	*Trtp += 4;
-
 	*Tras = dramTimingLowRegister->getBits(0, 12, 4); //(miscReg >> 12) & 0x0F;
-	*Tras += 15;
-
 	*Trc = dramTimingLowRegister->getBits(0, 16, 5); //(miscReg >> 16) & 0x1F;	// ddr3 size
-	*Trc += 11;
-
-	//	*Twr = (miscReg >> 20) // bugbug get from reg 0x84
 	*Trrd = dramTimingLowRegister->getBits(0, 22, 2); //(miscReg >> 22) & 0x03;
-	*Trrd += 4;
-
-	//ReadPciConfigDwordEx (Target,DRAMMRSRegister,&miscReg);
-
 	*Twr = dramMsrRegister->getBits(0, 4, 3); //(miscReg >> 4) & 0x07; // assumes ddr3
-	*Twr += 4;
-
 	*Tcwl = dramMsrRegister->getBits(0, 20, 3); //(miscReg >> 20) & 0x07;
-	*Tcwl += 5;
+
+	if (getDDR3Mode(device) || getDramFrequency(device) == 533) {
+
+		//Assumes DDR3/DDR2-1066 memory type
+
+		if (!getDDR3Mode(device))
+			*Tcl += 1;
+		else
+			*Tcl += 4;
+
+		*Trcd += 5;
+		*Trp += 5;
+
+		if (!getDDR3Mode(device)) {
+			*Trtp = dramTimingLowRegister->getBits(0, 11, 1);
+			*Trtp += 2;
+		} else
+			*Trtp += 4;
+
+		*Tras += 15;
+		*Trc += 11;
+
+		*Twr += 4;
+		if (*Twr > 8) {
+			*Twr += *Twr - 8;
+		}
+
+		*Trrd += 4;
+		*Tcwl += 5;
+
+	} else {
+
+		*Tcl += 1;
+
+		//For Trcd, in case of DDR2 first MSB looks like must be discarded
+		*Trcd = dramTimingLowRegister->getBits(0, 4, 2);
+		*Trcd += 3;
+
+		//For Trp, in case of DDR2 first LSB looks like must be discarded
+		*Trp = dramTimingLowRegister->getBits(0, 6, 2);
+		*Trp += 3;
+
+		//For Trtp, in case of DDR2 first LSB looks like must be discarded
+		*Trtp = dramTimingLowRegister->getBits(0, 11, 1); //(miscReg >> 10) & 0x03;
+		*Trtp += 2;
+
+		*Tras += 3;
+
+		*Trc = dramTimingLowRegister->getBits(0, 16, 3); //(miscReg >> 16) & 0x1F;	// ddr2 < 1066 size
+		*Trc += 11;
+
+		*Trrd = dramTimingLowRegister->getBits(0, 22, 2); //(miscReg >> 22) & 0x03;
+		*Trrd += 2;
+
+		*Twr = dramTimingLowRegister->getBits(0, 20, 2); // assumes ddr2
+		*Twr += 3;
+
+
+	}
 
 	free(dramMsrRegister);
 	free(dramTimingLowRegister);
@@ -3382,7 +3272,6 @@ void K10Processor::showHTC() {
 	}
 }
 
-//TODO: needs to be expanded to deal also with DDR2 memory
 void K10Processor::showDramTimings() {
 
 	int nodes = getProcessorNodes();
@@ -3391,6 +3280,8 @@ void K10Processor::showDramTimings() {
 	DWORD Tcl, Trcd, Trp, Trtp, Tras, Trc, Twr, Trrd, Tcwl, T_mode;
 	DWORD Tfaw, TrwtWB, TrwtTO, Twtr, Twrrd, Twrwr, Trdrd, Tref, Trfc0;
 	DWORD Trfc1, Trfc2, Trfc3, MaxRdLatency;
+	bool ddrTypeDDR3;
+	DWORD ddrFrequency;
 
 	printf ("\nDRAM Configuration Status\n\n");
 
@@ -3401,25 +3292,39 @@ void K10Processor::showDramTimings() {
 
 		for (dct_index = 0; dct_index < 2; dct_index++) {
 
-			getDramTimingLow(dct_index, &Tcl, &Trcd, &Trp, &Trtp, &Tras, &Trc,
-					&Twr, &Trrd, &Tcwl, &T_mode, &Tfaw);
+			if (getDramValid(dct_index)) {
 
-			getDramTimingHigh(dct_index, &TrwtWB, &TrwtTO, &Twtr, &Twrrd,
-					&Twrwr, &Trdrd, &Tref, &Trfc0, &Trfc1, &Trfc2, &Trfc3,
-					&MaxRdLatency);
+				ddrTypeDDR3=getDDR3Mode (dct_index);
+				ddrFrequency=getDramFrequency(dct_index)*2;
 
-			printf("DCT%d:\n", dct_index);
-			//Low DRAM Register
-			printf(
-					"Tcl=%u Trcd=%u Trp=%u Tras=%u Access Mode:%uT Trtp=%u Trc=%u Twr=%u Trrd=%u Tcwl=%u Tfaw=%u\n",
-					Tcl, Trcd, Trp, Tras, T_mode, Trtp, Trc, Twr, Trrd, Tcwl,
-					Tfaw);
+				getDramTimingLow(dct_index, &Tcl, &Trcd, &Trp, &Trtp, &Tras, &Trc,
+						&Twr, &Trrd, &Tcwl, &T_mode, &Tfaw);
 
-			//High DRAM Register
-			printf(
-					"TrwtWB=%u TrwtTO=%u Twtr=%u Twrrd=%u Twrwr=%u Trdrd=%u Tref=%u Trfc0=%u Trfc1=%u Trfc2=%u Trfc3=%u MaxRdLatency=%u\n",
-					TrwtWB, TrwtTO, Twtr, Twrrd, Twrwr, Trdrd, Tref, Trfc0,
-					Trfc1, Trfc2, Trfc3, MaxRdLatency);
+				getDramTimingHigh(dct_index, &TrwtWB, &TrwtTO, &Twtr, &Twrrd,
+						&Twrwr, &Trdrd, &Tref, &Trfc0, &Trfc1, &Trfc2, &Trfc3,
+						&MaxRdLatency);
+
+				printf("DCT%d: ", dct_index);
+				printf ("memory type: ");
+				if (ddrTypeDDR3==true) printf ("DDR3"); else printf ("DDR2");
+				printf (" frequency: %d MHz\n",ddrFrequency);
+
+				//Low DRAM Register
+				printf(
+						"Tcl=%u Trcd=%u Trp=%u Tras=%u Access Mode:%uT Trtp=%u Trc=%u Twr=%u Trrd=%u Tcwl=%u Tfaw=%u\n",
+						Tcl, Trcd, Trp, Tras, T_mode, Trtp, Trc, Twr, Trrd, Tcwl,
+						Tfaw);
+
+				//High DRAM Register
+				printf(
+						"TrwtWB=%u TrwtTO=%u Twtr=%u Twrrd=%u Twrwr=%u Trdrd=%u Tref=%u Trfc0=%u Trfc1=%u Trfc2=%u Trfc3=%u MaxRdLatency=%u\n",
+						TrwtWB, TrwtTO, Twtr, Twrrd, Twrwr, Trdrd, Tref, Trfc0,
+						Trfc1, Trfc2, Trfc3, MaxRdLatency);
+
+			} else {
+
+				printf ("- controller unactive -\n");
+			}
 
 		}
 

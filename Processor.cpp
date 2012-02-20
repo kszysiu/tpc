@@ -94,10 +94,11 @@ PROCESSORMASK Processor::getMask (DWORD core, DWORD node) {
 	//If core is set to ALL_CORES and node is free we set the mask
 	//to specify all the cores of one specific node
 	if ((core==ALL_CORES) && (node!=ALL_NODES)) {
-		mask=-1;
-		mask=mask<<(MAX_CORES-((node+1)*processorCores));
-		mask=mask>>(MAX_CORES-processorCores);
-		mask=mask<<(node*processorCores);
+		mask = 1;
+		mask <<= processorCores;
+		mask -= 1;
+		mask <<= processorCores * node;
+
 		return mask;
 	}
 
@@ -115,14 +116,14 @@ PROCESSORMASK Processor::getMask (DWORD core, DWORD node) {
 	//we set the mask as a whole sequence of true bits, except for
 	//exceeding bits
 	if ((core==ALL_CORES) && (node==ALL_NODES)) {
-		mask=-1;
-		offset=(MAX_CORES-(processorCores*processorNodes));
-		mask=mask << offset;
-		mask=mask >> offset;
+		mask = 1;
+		mask <<= processorCores * processorNodes;
+		mask -= 1;
+
 		return mask;
 	}
 
-	return NULL;
+	return 0;
 
 }
 
@@ -142,13 +143,12 @@ PROCESSORMASK Processor::getMask () {
  */
 DWORD Processor::getNodeMask(DWORD node) {
 	DWORD mask;
-	DWORD offset;
 
 	if (node == ALL_NODES) {
-		offset = MAX_NODES - processorNodes;
-		mask = -1;
-		mask = mask << offset;
-		mask = mask >> offset;
+		mask = 1;
+		mask <<= processorNodes;
+		mask -= 1;
+
 		return mask;
 	}
 
@@ -230,6 +230,7 @@ void Processor::convertFreqtoFD(DWORD, int *, int *) {
 }
 
 void Processor::setProcessorStrId (const char *strId) {
+	if (strlen(strId)>64) printf ("Warning: processor string Id Exceeds 64 bytes!\n");
 	strcpy_s (processorStrId,strId);
 }
 
@@ -379,13 +380,13 @@ void Processor::setVID(PState ps, DWORD vid) {
 
 /* setFID */
 
-void Processor::setFID(PState ps, DWORD fid) {
+void Processor::setFID(PState ps, float fid) {
 	return;
 }
 
 /* setDID */
 
-void Processor::setDID(PState ps, DWORD did) {
+void Processor::setDID(PState ps, float did) {
 	return;
 }
 
@@ -407,13 +408,13 @@ DWORD Processor::getVID(PState ps) {
 
 /* getFID */
 
-DWORD Processor::getFID(PState ps) {
+float Processor::getFID(PState ps) {
 	return -1;
 }
 
 /* getDID */
 
-DWORD Processor::getDID(PState ps) {
+float Processor::getDID(PState ps) {
 	return -1;
 }
 
@@ -465,7 +466,7 @@ void Processor::setMaximumPState(PState ps) {
 
 PState Processor::getMaximumPState() {
 	printf("Unsupported processor feature\n");
-	return NULL;
+	return 0;
 }
 
 /* setNBVid */
@@ -689,29 +690,12 @@ void Processor::perfCounterGetValue(unsigned int perfCounter) {
 void Processor::perfMonitorCPUUsage() {
 	return;
 }
-/*
-void Processor::perfCounterMonitor(int core, int perfCounter) {
+
+void Processor::perfMonitorFPUUsage() {
 	return;
 }
 
-//Cpu Usage section
-bool Processor::initUsageCounter(DWORD *) {
-	return true;
-}
-DWORD Processor::getUsageCounter(DWORD *, DWORD) {
-	return 0;
-}
-DWORD Processor::getUsageCounter(DWORD *, DWORD , int) {
-	return 0;
-}*/
-
-//Misc
-void Processor::forcePVIMode(bool toggle) {
-	printf("Unsupported processor feature\n");
-	return;
-}
-void Processor::forceSVIMode(bool toggle) {
-	printf("Unsupported processor feature\n");
+void Processor::perfMonitorDCMA() {
 	return;
 }
 
